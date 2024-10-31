@@ -1,2 +1,4 @@
 gensim
 wikiextractor
+requests
+tqdm
