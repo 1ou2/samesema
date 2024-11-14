@@ -6,6 +6,8 @@ import os
 base_url = "https://dumps.wikimedia.org/frwiki/latest/"
 data_dir = "data/"
 
+os.makedirs(data_dir, exist_ok=True)
+
 response = requests.get(base_url)
 
 # search all dumps
