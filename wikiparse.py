@@ -71,17 +71,17 @@ class WikiXMLProcessor:
         # Remove nested templates
         text = remove_nested_braces(text)
         # Remove math equations
-        text = re.sub(r'<math>.*?</math>', '', text, flags=re.DOTALL)
+        text = re.sub(r'<math>.*?</math>', '', text, flags=re.DOTALL|re.IGNORECASE)
         # Also remove inline math with dollar signs if present
         text = re.sub(r'\$.*?\$', '', text)
         # Remove displaystyle math if present
         text = re.sub(r'\\displaystyle\{.*?\}', '', text, flags=re.DOTALL)
 
         # for gallery images , div, timeline, mapframe
-        text = re.sub(r'<gallery.*?</gallery>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<div.*?</div>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<timeline.*?</timeline>', '', text, flags=re.DOTALL)
-        text = re.sub(r'<mapframe.*?</mapframe>', '', text, flags=re.DOTALL)
+        text = re.sub(r'<gallery.*?</gallery>', '', text, flags=re.DOTALL|re.IGNORECASE)
+        text = re.sub(r'<div.*?</div>', '', text, flags=re.DOTALL|re.IGNORECASE)
+        text = re.sub(r'<timeline.*?</timeline>', '', text, flags=re.DOTALL|re.IGNORECASE)
+        text = re.sub(r'<mapframe.*?</mapframe>', '', text, flags=re.DOTALL|re.IGNORECASE)
 
         # Remove escaped quotes pattern \'\' word \'\'
         text = re.sub(r"\\\'\\\'([^\\]*)\\\'\\\'", r'\1', text)
@@ -100,7 +100,7 @@ class WikiXMLProcessor:
         text = re.sub(r'\{\{[^\}]*\}\}', '', text)
 
         # Remove File/Image patterns with balanced brackets using recursive regex
-        pattern = r'\[\[(?:File|Fichier|Image)\s?:(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[[^[\]]*\])*\])*\])*\])*\])*\]\]'
+        pattern = r'\[\[(?:File|Fichier|Image|Catégorie)\s?:(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[[^[\]]*\])*\])*\])*\])*\])*\]\]'
         text = regex.sub(pattern, '', text,flags=re.IGNORECASE)
     
         
@@ -109,7 +109,10 @@ class WikiXMLProcessor:
         
         # Remove references <ref>...</ref>
         text = re.sub(r'<ref[^>]*>.*?</ref>', '', text, flags=re.DOTALL)
-        
+
+        # remove tags, ";tags"
+        text = re.sub(r';[A-Z]\w+', '', text, flags=re.DOTALL)        
+
         # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
         
@@ -177,19 +180,19 @@ class WikiXMLProcessor:
             page_count = 0
             
             for event, elem in context:
-                if page_count > 10000:
+                if page_count > 4000:
                     break
                 if elem.tag.endswith('page'):
                     try:
                         # Find title and text elements
                         title = elem.find('.//{*}title').text
                         # sonic adventure
-                        if title.startswith("Hierosonic"):
+                        if title.startswith("Drew Lock"):
                             print("Found it")
                         text = elem.find('.//{*}text').text
                         process_page = True
                         # do not process Portail or project pages
-                        skip_categories = ["Portail:", "Projet:","Catégorie:","Wikipedia:","Wikipédia:"]
+                        skip_categories = ["Portail:", "Projet:","Catégorie:","Wikipedia:","Wikipédia:","Modèle:","Sujet:","Fichier:","MediaWiki:"]
                         for category in skip_categories:
                             if title.startswith(category):
                                 process_page = False
@@ -199,7 +202,7 @@ class WikiXMLProcessor:
                             cleaned_text = title + "\n" + self.clean_wikipedia_text(text)
                             # check if text contains the word "width"
                             # it probably means that the cleanup failed and html code is still present
-                            black_list = ["width","colspan","valign","align=","upright="]
+                            black_list = ["width","colspan","valign","align=","upright=","|}","||"]
                             for word in black_list:
                                 if word in cleaned_text:
                                     process_page = False
