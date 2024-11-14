@@ -7,7 +7,7 @@ from pathlib import Path
 import os
 
 class WikiXMLProcessor:
-    def __init__(self, input_file: str, output_file: str = None):
+    def __init__(self, input_file: str, output_dir: str = None):
         """Initialize the Wikipedia XML processor.
         
         Args:
@@ -15,8 +15,9 @@ class WikiXMLProcessor:
             output_file: Optional path to save extracted text
         """
         self.input_file = Path(input_file)
-        self.output_file = Path(output_file) if output_file else None
+        self.output_dir = output_dir
         self.setup_logging()
+        self.page_count = 0
     
     def setup_logging(self):
         """Configure logging for the processor."""
@@ -87,17 +88,18 @@ class WikiXMLProcessor:
         text = re.sub(r"\\\'\\\'([^\\]*)\\\'\\\'", r'\1', text)
         
         # Remove table patterns with balanced braces
-        table_pattern = r'\{\|(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\})*\|\}'
-        text = regex.sub(table_pattern, '', text)
-
-        # {| class="wikitable
-        text = re.sub(r'\{\| class=.*\|\}', '', text, flags=re.DOTALL)
+        #table_pattern = r'\{\|(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*\})*\|\}'
+        #text = regex.sub(table_pattern, '', text)
 
         # Remove table structures {| ... |}
         text = re.sub(r'\{\|.*?\|\}', '', text, flags=re.DOTALL)
         
         # Remove content between {{ }}
         text = re.sub(r'\{\{[^\}]*\}\}', '', text)
+
+        # {| class="wikitable
+        # greedy version, catch the biggest table
+        #text = re.sub(r'\{\| class=.*\|\}', '', text, flags=re.DOTALL)
 
         # Remove File/Image patterns with balanced brackets using recursive regex
         pattern = r'\[\[(?:File|Fichier|Image|Catégorie)\s?:(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[(?:[^[\]]|\[[^[\]]*\])*\])*\])*\])*\])*\]\]'
@@ -111,7 +113,8 @@ class WikiXMLProcessor:
         text = re.sub(r'<ref[^>]*>.*?</ref>', '', text, flags=re.DOTALL)
 
         # remove tags, ";tags"
-        text = re.sub(r';[A-Z]\w+', '', text, flags=re.DOTALL)        
+        text = re.sub(r';[A-Z]\w+', '', text, flags=re.DOTALL)
+        text = re.sub(r';\d+', '', text, flags=re.DOTALL)    
 
         # Remove HTML tags
         text = re.sub(r'<[^>]+>', '', text)
@@ -151,9 +154,11 @@ class WikiXMLProcessor:
         # used for pseudo code
         text = re.sub(r'\n[ ]{4,}.*(?=\n|$)', '', text)
 
+        text = text.replace("\\'\\'", "")
+        text = text.replace("----", "")
+
         # Remove multiple spaces and newlines
         text = re.sub(r'\s+', ' ', text)
-        text = text.replace("\\'\\'", "")
 
         # remove '\n at begining of text
         text = re.sub(r"^'\n", '', text)
@@ -161,6 +166,9 @@ class WikiXMLProcessor:
         # remove consecutive carriage returns
         text = re.sub(r'\n+', '\n', text)
         
+        # remove last = character
+        text = re.sub(r'=$', '', text)
+
         return text.strip()
 
     
@@ -180,26 +188,24 @@ class WikiXMLProcessor:
             page_count = 0
             
             for event, elem in context:
-                if page_count > 4000:
-                    break
+                #if page_count > 4000:
+                #    break
                 if elem.tag.endswith('page'):
                     try:
                         # Find title and text elements
                         title = elem.find('.//{*}title').text
-                        # sonic adventure
-                        if title.startswith("Drew Lock"):
-                            print("Found it")
                         text = elem.find('.//{*}text').text
                         process_page = True
                         # do not process Portail or project pages
-                        skip_categories = ["Portail:", "Projet:","Catégorie:","Wikipedia:","Wikipédia:","Modèle:","Sujet:","Fichier:","MediaWiki:"]
+                        skip_categories = ["Portail:", "Projet:","Catégorie:","Wikipedia:","Wikipédia:","Modèle:","Sujet:","Fichier:","MediaWiki:","Module:"]
                         for category in skip_categories:
                             if title.startswith(category):
                                 process_page = False
                                 break
 
                         if text and not self._is_redirect(text) and process_page:
-                            cleaned_text = title + "\n" + self.clean_wikipedia_text(text)
+                            #cleaned_text = title + "\n" + self.clean_wikipedia_text(text)
+                            cleaned_text = self.clean_wikipedia_text(text)
                             # check if text contains the word "width"
                             # it probably means that the cleanup failed and html code is still present
                             black_list = ["width","colspan","valign","align=","upright=","|}","||"]
@@ -240,22 +246,23 @@ class WikiXMLProcessor:
             
             if len(current_batch) >= batch_size:
                 documents.extend(current_batch)
-                if self.output_file:
-                    self._save_batch(current_batch)
+                self._save_batch(current_batch)
                 current_batch = []
         
         # Handle remaining documents
         if current_batch:
             documents.extend(current_batch)
-            if self.output_file:
-                self._save_batch(current_batch)
+            self._save_batch(current_batch)
         
         self.logger.info(f"Completed processing {len(documents)} documents")
         return documents
     
     def _save_batch(self, batch: list[str]):
+        filename = os.path.basename(self.input_file)[:-4]
+        output_file = Path(self.output_dir) / f"{filename}-{self.page_count}.txt"
+        self.page_count += 1
         """Save a batch of documents to file."""
-        with open(self.output_file, 'a', encoding='utf-8') as f:
+        with open(output_file, 'a', encoding='utf-8') as f:
             for doc in batch:
                 f.write(doc + '\n\n')
 
@@ -273,8 +280,9 @@ if __name__ == '__main__':
             print(f"Preprocessing {input}")
             processor = WikiXMLProcessor(
                 input_file=input,
-                output_file=processed_dir + filename[:-4] + "--.txt"
+                output_dir=processed_dir
             )
             
             # Process the dump and get the documents
             documents = processor.process_dump(batch_size=1000)
+            print(processor.page_count)
